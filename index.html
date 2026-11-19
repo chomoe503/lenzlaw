@@ -1,0 +1,809 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>插入時抵抗，離開時吸引</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@900&display=swap">
+<style>
+/* Layout: 16:9 screens show the stage and the two graphs on the left, the reasoning and controls on the right, all in one view.
+   Phones stack everything, with the stage and its action buttons pinned to the top while the rest scrolls. */
+:root{
+  --bg:#EEF2F7; --surface:#FFFFFF; --soft:#E6ECF4; --ink:#0F1B2D; --muted:#566883; --line:#D3DCE8;
+  --north:#D92D3A; --south:#2B6CDF; --current:#E3A008; --wire:#B7692A;
+  --phi:#5B4BDB; --eps:#0E9F8E; --resist:#D9480F; --hold:#0A7F95;
+  --f-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0B1220; --surface:#131C2E; --soft:#1B2740; --ink:#E8EEF7; --muted:#97A7C0; --line:#27344D;
+    --north:#FF5C68; --south:#5B93FF; --current:#FFC53D; --wire:#E0A060;
+    --phi:#9A92FF; --eps:#3DD6C0; --resist:#FF8A3D; --hold:#4CC9E0; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0B1220; --surface:#131C2E; --soft:#1B2740; --ink:#E8EEF7; --muted:#97A7C0; --line:#27344D;
+  --north:#FF5C68; --south:#5B93FF; --current:#FFC53D; --wire:#E0A060;
+  --phi:#9A92FF; --eps:#3DD6C0; --resist:#FF8A3D; --hold:#4CC9E0; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--ink); font-family:var(--f-body); line-height:1.5;
+  padding-block:8px 14px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bg);z-index:10}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--phi);outline-offset:2px;border-radius:6px}
+
+.app{
+  --u:clamp(13px,min(1.05vw,1.9vh),21px);
+  font-size:var(--u); height:100%;
+  display:grid; gap:.8em 1.3em;
+  grid-template-columns:minmax(0,1fr) clamp(330px,31vw,600px);
+  grid-template-rows:auto minmax(0,1.5fr) minmax(0,1fr);
+  grid-template-areas:"top top" "stage side" "graphs side";
+}
+.top{grid-area:top;display:flex;align-items:baseline;gap:.4em 1.2em;flex-wrap:wrap}
+.top h1{margin:0;font-family:var(--f-display);font-weight:900;font-size:1.9em;line-height:1.1;letter-spacing:.04em}
+.top .sub{color:var(--muted);font-size:1em}
+.tabs{margin-left:auto;display:flex;gap:.25em;background:var(--soft);padding:.22em;border-radius:12px}
+.tab{min-height:32px;padding:.2em .9em;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--muted);cursor:pointer;font-weight:500;white-space:nowrap}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);border-color:var(--line);font-weight:700}
+
+.stage-wrap{grid-area:stage;min-height:0;display:flex;flex-direction:column;gap:.6em}
+.stage-box{position:relative;flex:1;min-height:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.stage-box canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y;cursor:grab}
+.stage-box canvas.grabbing{cursor:grabbing}
+
+.banner{
+  position:absolute;left:.7em;top:.6em;max-width:min(22em,46%);padding:.35em .75em .45em;
+  border-radius:12px;border-left:.3em solid var(--bc,var(--muted));
+  background:color-mix(in srgb,var(--surface) 88%,transparent);pointer-events:none;
+}
+.banner[data-ph="rise"]{--bc:var(--resist)}
+.banner[data-ph="fall"]{--bc:var(--hold)}
+.b-when{font-weight:700;font-size:1em;letter-spacing:.08em;line-height:1.3;color:var(--bc,var(--muted))}
+.b-main{font-family:var(--f-display);font-weight:900;font-size:2.6em;line-height:1.05;color:var(--bc,var(--muted));letter-spacing:.06em;white-space:nowrap}
+.b-sub{font-size:.95em;font-weight:500;line-height:1.35}
+.hint{
+  position:absolute;right:.8em;top:.6em;max-width:min(24em,56%);text-align:right;font-size:.85em;color:var(--muted);
+  background:color-mix(in srgb,var(--surface) 88%,transparent);padding:.15em .6em;border-radius:99px;pointer-events:none;
+  transition:opacity .4s;
+}
+.hint.gone{opacity:0}
+
+.actions{display:flex;flex-wrap:wrap;gap:.5em}
+.btn{
+  min-height:44px;padding:.4em 1em;border-radius:10px;border:1px solid var(--line);background:var(--surface);
+  cursor:pointer;font-weight:500;white-space:nowrap;
+}
+.btn:hover{border-color:var(--muted)}
+.btn[data-on="1"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn .pn{color:var(--north);font-weight:700}.btn .ps{color:var(--south);font-weight:700}
+
+.graphs{grid-area:graphs;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:.8em}
+.chart{margin:0;min-width:0;min-height:0;position:relative;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.chart canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+.side{grid-area:side;min-height:0;min-width:0;overflow:auto;display:flex;flex-direction:column;gap:.8em;scrollbar-width:thin;padding-right:2px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:.8em 1em}
+.card h2{margin:0 0 .45em;font-size:.82em;font-weight:700;letter-spacing:.12em;color:var(--muted)}
+.why{font-size:1.02em;line-height:1.55;margin:0;min-height:3.2em}
+.steps{list-style:none;margin:0;padding:0;display:grid;gap:.1em}
+.steps li{display:grid;grid-template-columns:1.7em 7.6em minmax(0,1fr);align-items:baseline;gap:.2em .4em;padding:.2em 0;border-top:1px solid var(--line)}
+.steps li:first-child{border-top:0}
+.steps .n{font-family:var(--f-mono);color:var(--muted);font-size:.9em}
+.steps .k{color:var(--muted);font-size:.92em}
+.steps .v{font-weight:700;min-width:0}
+.steps .v small{font-weight:400;color:var(--muted)}
+.tip{margin:.5em 0 0;font-size:.85em;color:var(--muted)}
+.calc{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.2em .8em;margin:0;font-size:.98em}
+.calc dt{color:var(--muted)}
+.calc dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.calc .big{font-weight:500;color:var(--eps)}
+.formula{font-family:var(--f-mono);font-size:1.05em;margin:0 0 .45em}
+.ctl{display:grid;gap:.55em}
+.row{display:grid;grid-template-columns:5.2em minmax(0,1fr) 4.6em;align-items:center;gap:.6em}
+.row label{color:var(--muted);font-size:.95em}
+.row output{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums;font-size:.95em}
+input[type=range]{width:100%;min-height:32px;accent-color:var(--phi)}
+.checks{display:flex;flex-wrap:wrap;gap:.4em 1.4em}
+.checks label{display:flex;align-items:center;gap:.5em;min-height:36px;cursor:pointer}
+.checks input{width:1.15em;height:1.15em;accent-color:var(--phi)}
+
+@media (min-width:900px) and (min-aspect-ratio:11/10) and (max-height:900px){
+  .side{gap:.6em}.card{padding:.65em .9em}.tip2{display:none}
+}
+@media (max-width:899px),(max-aspect-ratio:11/10){
+  html,body{height:auto}
+  .app{display:flex;flex-direction:column;height:auto;font-size:15px;gap:.8em}
+  .top h1{font-size:1.6em}
+  .tabs{margin-left:0;width:100%}
+  .tab{flex:1;min-height:42px}
+  .stage-wrap{order:1;position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:6px .5em}
+  .stage-box{flex:none;aspect-ratio:1.4/1;max-width:100%}
+  .side{display:contents}
+  .c-why{order:2}.c-steps{order:3}.graphs{order:4}.c-faraday{order:5}.c-ctl{order:6}
+  .b-when{font-size:.85em}
+  .b-main{font-size:1.7em}
+  .b-sub{font-size:.8em}
+  .banner{max-width:8em}
+  .why{min-height:0}
+  .actions{gap:.4em}
+  .btn{padding:.3em .7em;min-height:42px;font-size:.95em}
+  .graphs{grid-template-columns:1fr}
+  .chart{aspect-ratio:3.1/1}
+  .steps li{grid-template-columns:1.5em 6.6em minmax(0,1fr)}
+}
+@media (prefers-reduced-motion:reduce){.hint{transition:none}}
+</style>
+
+<main class="app">
+  <header class="top">
+    <h1>插入時抵抗，離開時吸引</h1>
+    <span class="sub">冷次定律 × 法拉第定律</span>
+    <div class="tabs" role="tablist" aria-label="示範模式">
+      <button class="tab" role="tab" id="tabMag" data-tab="mag" aria-selected="true" type="button">磁鐵動</button>
+      <button class="tab" role="tab" id="tabCoil" data-tab="coil" aria-selected="false" tabindex="-1" type="button">線圈動</button>
+      <button class="tab" role="tab" id="tabBoth" data-tab="both" aria-selected="false" tabindex="-1" type="button">兩個都動</button>
+    </div>
+  </header>
+
+  <section class="stage-wrap" aria-label="磁鐵與線圈模擬">
+    <div class="stage-box">
+      <canvas id="stage" tabindex="0" role="img" aria-label="一根條形磁鐵與線圈的側視圖。左右拖曳磁鐵，或用左右方向鍵移動。"></canvas>
+      <div class="banner" id="banner" data-ph="idle" aria-live="polite">
+        <div class="b-when" id="bWhen">磁通量不變</div>
+        <div class="b-main" id="bMain">無感應</div>
+        <div class="b-sub" id="bSub">ε = 0</div>
+      </div>
+      <div class="hint" id="hint">← 左右拖曳磁鐵 →</div>
+    </div>
+    <div class="actions" role="group" aria-label="自動示範">
+      <button class="btn" id="bIn" type="button">▶ 插入</button>
+      <button class="btn" id="bOut" type="button">◀ 拔出</button>
+      <button class="btn" id="bLoop" type="button" aria-label="穿過線圈來回往返">⇄ 往返</button>
+      <button class="btn" id="bFlip" type="button"><span class="ps">S</span>｜<span class="pn">N</span> 翻面</button>
+    </div>
+  </section>
+
+  <section class="graphs" aria-label="磁通量與感應電動勢的時間圖">
+    <figure class="chart"><canvas id="gPhi" role="img" aria-label="磁通量 Φ 對時間的圖"></canvas></figure>
+    <figure class="chart"><canvas id="gEps" role="img" aria-label="感應電動勢 ε 對時間的圖"></canvas></figure>
+  </section>
+
+  <aside class="side">
+    <div class="card c-why">
+      <h2>為什麼</h2>
+      <p class="why" id="why">磁鐵不動，磁通量不變 → ε = 0 → 沒有電流。拖曳磁鐵試試看。</p>
+    </div>
+
+    <div class="card c-steps">
+      <h2>冷次定律　四步驟</h2>
+      <ol class="steps">
+        <li><span class="n">①</span><span class="k">原磁場</span><span class="v" id="s1">—</span></li>
+        <li><span class="n">②</span><span class="k">磁通量 Φ</span><span class="v" id="s2">—</span></li>
+        <li><span class="n">③</span><span class="k">感應磁場</span><span class="v" id="s3">—</span></li>
+        <li><span class="n">④</span><span class="k">感應電流</span><span class="v" id="s4">—</span></li>
+      </ol>
+      <p class="tip">右手定則：拇指指向感應磁場，四指彎曲方向就是電流方向。</p>
+    </div>
+
+    <div class="card c-faraday">
+      <h2>法拉第定律</h2>
+      <p class="formula">ε = −N · ΔΦ/Δt</p>
+      <dl class="calc">
+        <dt id="cVlab">磁鐵速度 v</dt><dd id="cV">+0.0 cm/s</dd>
+        <dt>單匝 ΔΦ/Δt</dt><dd id="cRate">0.0 mWb/s</dd>
+        <dt>匝數 N（圖為示意）</dt><dd id="cN">200</dd>
+        <dt>感應電動勢 ε</dt><dd class="big" id="cEps">0.00 V</dd>
+        <dt id="cIlab">電流 I = ε / 10 Ω</dt><dd id="cI">0.000 A</dd>
+      </dl>
+      <p class="tip tip2" id="tip2">磁力永遠阻礙磁鐵的運動，手多出的力變成電能。越快、匝數越多，ε 越大。</p>
+    </div>
+
+    <div class="card ctl c-ctl">
+      <h2>設定</h2>
+      <div class="row"><label for="rSpeed">示範速度</label><input id="rSpeed" type="range" min="6" max="60" step="1" value="25"><output id="oSpeed" for="rSpeed">25 cm/s</output></div>
+      <div class="row"><label for="rN">線圈匝數</label><input id="rN" type="range" min="50" max="500" step="50" value="200"><output id="oN" for="rN">200 匝</output></div>
+      <div class="checks">
+        <label><input id="cSwitch" type="checkbox" checked>電路接通</label>
+        <label><input id="cField" type="checkbox" checked>顯示磁力線</label>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id)};
+
+/* ---------- physical model (lengths in cm, flux in mWb, resistance in ohm) ---------- */
+var COIL_L=10, COIL_R=4, MAG_L=6, MAG_H=1.8, PHI0=3, RES=10, NSAMP=9, NDIP=5;
+
+var S={
+  x:-14, xPrev:-14, target:-14, cx:0, cxPrev:0, ctarget:0,
+  vm:0, vc:0, vSm:0,                /* magnet, coil and relative (magnet minus coil) velocity, cm/s */
+  tab:'mag', p:1, N:200, speed:25, closed:true, field:true,
+  auto:null, drag:{}, touched:false,
+  phi:0, rate:0, eps:0, I:0, F:0, dphidx:0, phase:0, carrier:0, needle:0, t:0
+};
+var geo={W:0,H:0,s:10,ax:0,ay:0,xmax:17,xmin:-17,cmax:12,cmin:-12,sw:null};
+var C={};
+var stage=$('stage'), sctx=stage.getContext('2d');
+
+/* flux through one loop of radius COIL_R from a point dipole on the axis, z cm away (peak = 1) */
+function fz(z){var d=COIL_R*COIL_R+z*z;return COIL_R*COIL_R*COIL_R/(d*Math.sqrt(d));}
+/* average flux per turn, magnet centred at xm; p=+1 means N pole on the right (moment along +x) */
+function phiAvg(xm,p){
+  var tot=0,i,k,xl,xk,sum;
+  for(i=0;i<NSAMP;i++){
+    xl=-COIL_L/2+COIL_L*(i+.5)/NSAMP; sum=0;
+    for(k=0;k<NDIP;k++){xk=xm-MAG_L/2+MAG_L*(k+.5)/NDIP; sum+=fz(xl-xk);}
+    tot+=sum/NDIP;
+  }
+  return p*PHI0*tot/NSAMP;
+}
+function dPhidx(xm,p){var h=0.05;return (phiAvg(xm+h,p)-phiAvg(xm-h,p))/(2*h);}
+
+/* ---------- layout and colours ---------- */
+function readColors(){
+  var cs=getComputedStyle(document.documentElement);
+  ['bg','surface','soft','ink','muted','line','north','south','current','wire','phi','eps','resist','hold'].forEach(function(k){C[k]=cs.getPropertyValue('--'+k).trim()||'#888';});
+}
+function fit(canvas){
+  var r=canvas.getBoundingClientRect(), dpr=Math.min(window.devicePixelRatio||1,3);
+  var W=Math.max(10,r.width), H=Math.max(10,r.height);
+  canvas.width=Math.round(W*dpr); canvas.height=Math.round(H*dpr);
+  canvas.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+  return {W:W,H:H};
+}
+function layout(){
+  var d=fit(stage), W=d.W, H=d.H;
+  var Ww0=(W/H<1.6)?30:42;
+  geo.W=W; geo.H=H;
+  geo.s=Math.min(W/Ww0, H/17.5);
+  geo.ax=W/2; geo.ay=H*0.40;
+  geo.xmax=W/(2*geo.s)-MAG_L/2-0.8; geo.xmin=-geo.xmax;
+  geo.cmax=W/(2*geo.s)-COIL_L/2-1.8; geo.cmin=-geo.cmax;
+  S.x=clampX(S.x); S.target=clampX(S.target); S.xPrev=S.x;
+  S.cx=clampC(S.cx); S.ctarget=clampC(S.ctarget); S.cxPrev=S.cx;
+}
+function clampX(x){return Math.max(geo.xmin,Math.min(geo.xmax,x));}
+function clampC(x){return Math.max(geo.cmin,Math.min(geo.cmax,x));}
+function isDrag(o){var k;for(k in S.drag)if(S.drag[k].o===o)return true;return false;}
+
+/* ---------- small drawing helpers ---------- */
+function rr(ctx,x,y,w,h,r){
+  r=Math.min(r,w/2,h/2);
+  ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function arrow(x1,y1,x2,y2,color,w){
+  var ctx=sctx, a=Math.atan2(y2-y1,x2-x1), L=Math.max(8,w*3.4);
+  ctx.save(); ctx.strokeStyle=color; ctx.fillStyle=color; ctx.lineWidth=w; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2-Math.cos(a)*L*.6,y2-Math.sin(a)*L*.6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-Math.cos(a-.42)*L,y2-Math.sin(a-.42)*L); ctx.lineTo(x2-Math.cos(a+.42)*L,y2-Math.sin(a+.42)*L);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+function nDraw(){return Math.max(3,Math.min(10,Math.round(S.N/60)));}
+function alphaI(){var a=Math.abs(S.I); return a<0.004?0:Math.min(1,Math.pow(a/0.12,0.6));}
+
+/* ---------- magnetic field lines (pole model, drawn as in a textbook) ---------- */
+function fieldB(px,py,xm,p,out){
+  var pn=xm+p*(MAG_L/2-0.5), ps=xm-p*(MAG_L/2-0.5);
+  var dx=px-pn, d2=dx*dx+py*py+0.09, k=1/(d2*Math.sqrt(d2));
+  var bx=dx*k, by=py*k;
+  dx=px-ps; d2=dx*dx+py*py+0.09; k=-1/(d2*Math.sqrt(d2));
+  out[0]=bx+dx*k; out[1]=by+py*k;
+}
+function traceLine(x0,y0,xm,p,pts){
+  var ps=xm-p*(MAG_L/2-0.5), x=x0, y=y0, b=[0,0], h=0.22, lim=geo.W/(2*geo.s)+2, m, mx, my, i;
+  pts.length=0; pts.push(x,y);
+  for(i=0;i<520;i++){
+    fieldB(x,y,xm,p,b); m=Math.hypot(b[0],b[1]); if(m<1e-7)break;
+    mx=x+b[0]/m*h/2; my=y+b[1]/m*h/2;
+    fieldB(mx,my,xm,p,b); m=Math.hypot(b[0],b[1]); if(m<1e-7)break;
+    x+=b[0]/m*h; y+=b[1]/m*h; pts.push(x,y);
+    if(Math.hypot(x-ps,y)<0.55)break;
+    if(Math.abs(x)>lim||Math.abs(y)>12)break;
+  }
+}
+var ANG=[18,42,68,96,128,160], tmp=[];
+function drawField(){
+  var ctx=sctx, s=geo.s, xm=S.x, p=S.p, pn=xm+p*(MAG_L/2-0.5), r0=0.95, a, sg, th, i, n, j, x0, y0, ang, px, py, L=5.5;
+  ctx.save(); ctx.lineWidth=1.2; ctx.strokeStyle=C.muted; ctx.fillStyle=C.muted; ctx.globalAlpha=.5; ctx.lineJoin='round';
+  for(a=0;a<ANG.length;a++){
+    for(sg=-1;sg<=1;sg+=2){
+      th=ANG[a]*Math.PI/180; x0=pn+p*Math.cos(th)*r0; y0=sg*Math.sin(th)*r0;
+      traceLine(x0,y0,xm,p,tmp);
+      n=tmp.length/2; if(n<5)continue;
+      ctx.beginPath(); ctx.moveTo(geo.ax+tmp[0]*s,geo.ay-tmp[1]*s);
+      for(i=1;i<n;i++)ctx.lineTo(geo.ax+tmp[2*i]*s,geo.ay-tmp[2*i+1]*s);
+      ctx.stroke();
+      j=Math.max(1,Math.floor(n*.5));
+      px=geo.ax+tmp[2*j]*s; py=geo.ay-tmp[2*j+1]*s;
+      ang=Math.atan2(-(tmp[2*j+1]-tmp[2*j-1]),tmp[2*j]-tmp[2*j-2]);
+      ctx.beginPath(); ctx.moveTo(px+Math.cos(ang)*L,py+Math.sin(ang)*L);
+      ctx.lineTo(px+Math.cos(ang+2.5)*L,py+Math.sin(ang+2.5)*L);
+      ctx.lineTo(px+Math.cos(ang-2.5)*L,py+Math.sin(ang-2.5)*L); ctx.closePath(); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/* ---------- coil, current carriers, magnet ---------- */
+function drawCoil(half){
+  var ctx=sctx, s=geo.s, nd=nDraw(), R=COIL_R*s, rx=0.30*R, i, k, cx, th, a0, px, py;
+  ctx.save(); ctx.lineWidth=Math.max(2,0.13*s); ctx.lineCap='round'; ctx.strokeStyle=C.wire;
+  ctx.globalAlpha=half==='back'?0.5:1;
+  a0=half==='front'?0:Math.PI;
+  for(i=0;i<nd;i++){
+    cx=geo.ax+(S.cx-COIL_L/2+COIL_L*(i+.5)/nd)*s;
+    ctx.beginPath();
+    for(k=0;k<=24;k++){
+      th=a0+Math.PI*k/24; px=cx+rx*Math.sin(th); py=geo.ay-R*Math.cos(th);
+      if(k===0)ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+/* positive current runs in +theta: down the front of the loop, up the back (field along +x) */
+function drawCarriers(half){
+  var a=alphaI(); if(a<=0)return;
+  var ctx=sctx, s=geo.s, nd=nDraw(), R=COIL_R*s, rx=0.30*R, i, j, cx, th, sn, rad=Math.max(3,0.2*s), M=6;
+  ctx.save(); ctx.fillStyle=C.current; ctx.strokeStyle=C.surface; ctx.lineWidth=1; ctx.globalAlpha=a*(half==='back'?0.6:1);
+  for(i=0;i<nd;i++){
+    cx=geo.ax+(S.cx-COIL_L/2+COIL_L*(i+.5)/nd)*s;
+    for(j=0;j<M;j++){
+      th=S.carrier+j*2*Math.PI/M; sn=Math.sin(th);
+      if((half==='front')!==(sn>0))continue;
+      ctx.beginPath(); ctx.arc(cx+rx*sn,geo.ay-R*Math.cos(th),rad,0,6.2832); ctx.fill(); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+function drawMagnet(){
+  var ctx=sctx, s=geo.s, L=MAG_L*s, h=MAG_H*s, x=geo.ax+S.x*s-L/2, y=geo.ay-h/2, half=L/2;
+  var lc=S.p>0?C.south:C.north, rc=S.p>0?C.north:C.south, lt=S.p>0?'S':'N', rt=S.p>0?'N':'S';
+  ctx.save();
+  if(isDrag('m')||(!S.touched&&S.tab!=='coil')){ctx.strokeStyle=C.phi; ctx.lineWidth=2; ctx.globalAlpha=isDrag('m')?.9:.55; ctx.setLineDash([6,5]); rr(ctx,x-6,y-6,L+12,h+12,10); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;}
+  rr(ctx,x,y,L,h,Math.min(6,h*.18)); ctx.save(); ctx.clip();
+  ctx.fillStyle=lc; ctx.fillRect(x,y,half,h); ctx.fillStyle=rc; ctx.fillRect(x+half,y,half,h);
+  ctx.fillStyle='rgba(255,255,255,.2)'; ctx.fillRect(x,y,L,h*.26); ctx.restore();
+  rr(ctx,x,y,L,h,Math.min(6,h*.18)); ctx.strokeStyle=C.ink; ctx.globalAlpha=.6; ctx.lineWidth=1.2; ctx.stroke(); ctx.globalAlpha=1;
+  ctx.fillStyle='#fff'; ctx.font='700 '+Math.round(h*.62)+'px "Noto Sans TC",system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(lt,x+half/2,y+h/2+1); ctx.fillText(rt,x+half*1.5,y+h/2+1);
+  ctx.restore();
+}
+
+/* the coil acts as a second magnet: show it above the coil */
+function drawInduced(){
+  var ctx=sctx, s=geo.s, L=COIL_L*s, h=Math.max(16,1.3*s), gap=Math.max(6,.5*s), fs=Math.max(12,Math.round(.5*s));
+  var x=geo.ax+(S.cx-COIL_L/2)*s, y=geo.ay-COIL_R*s-h-gap, a=alphaI(), pos=S.I>0, half=L/2, txt='線圈的感應磁極', tw;
+  ctx.save();
+  ctx.strokeStyle=C.muted; ctx.globalAlpha=.55; ctx.setLineDash([5,4]); ctx.lineWidth=1.2; rr(ctx,x,y,L,h,6); ctx.stroke(); ctx.setLineDash([]);
+  if(a>0){
+    ctx.globalAlpha=a; rr(ctx,x,y,L,h,6); ctx.save(); ctx.clip();
+    ctx.fillStyle=pos?C.south:C.north; ctx.fillRect(x,y,half,h);
+    ctx.fillStyle=pos?C.north:C.south; ctx.fillRect(x+half,y,half,h); ctx.restore();
+    ctx.fillStyle='#fff'; ctx.font='700 '+Math.round(h*.6)+'px "Noto Sans TC",system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(pos?'S':'N',x+half/2,y+h/2+1); ctx.fillText(pos?'N':'S',x+half*1.5,y+h/2+1);
+  }
+  ctx.globalAlpha=1; ctx.fillStyle=C.muted; ctx.font='500 '+fs+'px "Noto Sans TC",system-ui,sans-serif'; ctx.textBaseline='middle';
+  tw=ctx.measureText(txt).width;
+  if(x+L+8+tw<=geo.W-4){ctx.textAlign='left'; ctx.fillText(txt,x+L+8,y+h/2);}
+  else{ctx.textAlign='right'; ctx.fillText(txt,x-8,y+h/2);}
+  ctx.restore();
+}
+
+/* ---------- circuit: leads, switch, galvanometer ---------- */
+function drawCircuit(){
+  var ctx=sctx, s=geo.s, H=geo.H, nd=nDraw(), R=COIL_R*s, yb=geo.ay+R, free=H-yb;
+  var gr=Math.max(24,Math.min(100,(free-8-28)/1.38)), boxH=.38*gr, gx=geo.ax, gy=H-8-boxH, yt=gy+boxH/2;
+  var xl=geo.ax+(S.cx-COIL_L/2+COIL_L/(2*nd))*s, xr=geo.ax+(S.cx+COIL_L/2-COIL_L/(2*nd))*s;
+  var xoL=Math.min(xl,gx-gr-.25*gr), xoR=Math.max(xr,gx+gr+.25*gr), jog=Math.min(8,.2*s+2), y1=yb+jog;
+  var segLen=yt-y1, gh=Math.max(10,Math.min(30,.24*segLen)), yS=y1+(segLen-gh)/2;
+  ctx.save(); ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle=C.wire; ctx.lineWidth=2.2;
+  ctx.beginPath(); ctx.moveTo(xl,yb); ctx.lineTo(xl,y1); ctx.lineTo(xoL,y1); ctx.lineTo(xoL,yt); ctx.lineTo(gx-gr,yt); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xr,yb); ctx.lineTo(xr,y1); ctx.lineTo(xoR,y1); ctx.lineTo(xoR,yS); ctx.moveTo(xoR,yS+gh); ctx.lineTo(xoR,yt); ctx.lineTo(gx+gr,yt); ctx.stroke();
+  /* switch */
+  ctx.beginPath();
+  if(S.closed){ctx.moveTo(xoR,yS+gh);ctx.lineTo(xoR,yS);} else {var ang=.62; ctx.moveTo(xoR,yS+gh); ctx.lineTo(xoR+Math.sin(ang)*gh*1.05,yS+gh-Math.cos(ang)*gh*1.05);}
+  ctx.stroke();
+  ctx.fillStyle=C.surface; ctx.lineWidth=1.6;
+  [yS,yS+gh].forEach(function(yy){ctx.beginPath();ctx.arc(xoR,yy,3.2,0,6.2832);ctx.fill();ctx.stroke();});
+  geo.sw={x:xoR-16,y:yS-8,w:32+gh*.7,h:gh+16};
+  ctx.fillStyle=C.muted; ctx.font='500 '+Math.max(12,Math.round(.5*s))+'px "Noto Sans TC",system-ui,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  if(xoR+gh*.95+8+84<=geo.W){ctx.textAlign='left'; ctx.fillText(S.closed?'開關：接通':'開關：斷開',xoR+gh*.95+8,yS+gh/2);}
+  else{ctx.textAlign='right'; ctx.fillText(S.closed?'開關：接通':'開關：斷開',xoR-10,yS+gh/2);}
+  /* housing and dial */
+  rr(ctx,gx-gr,gy,2*gr,boxH,6); ctx.fillStyle=C.soft; ctx.fill(); ctx.strokeStyle=C.ink; ctx.globalAlpha=.7; ctx.lineWidth=1.4; ctx.stroke(); ctx.globalAlpha=1;
+  ctx.beginPath(); ctx.arc(gx,gy,gr,Math.PI,2*Math.PI); ctx.closePath(); ctx.fillStyle=C.surface; ctx.fill(); ctx.strokeStyle=C.ink; ctx.globalAlpha=.7; ctx.stroke(); ctx.globalAlpha=1;
+  var t, a, c, sn, i2;
+  ctx.strokeStyle=C.muted; ctx.lineWidth=1.3;
+  for(t=-4;t<=4;t++){
+    a=t*15*Math.PI/180; c=Math.cos(a); sn=Math.sin(a); i2=(t===0)?.72:.82;
+    ctx.beginPath(); ctx.moveTo(gx+sn*gr*i2,gy-c*gr*i2); ctx.lineTo(gx+sn*gr*.94,gy-c*gr*.94); ctx.stroke();
+  }
+  var na=S.needle*Math.PI/180, nl=gr*.86;
+  ctx.strokeStyle=C.ink; ctx.lineWidth=2.4; ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gx+Math.sin(na)*nl,gy-Math.cos(na)*nl); ctx.stroke();
+  ctx.fillStyle=C.ink; ctx.beginPath(); ctx.arc(gx,gy,4,0,6.2832); ctx.fill();
+  ctx.fillStyle=C.muted; ctx.font='700 '+Math.round(boxH*.6)+'px "IBM Plex Mono",ui-monospace,monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('G',gx,gy+boxH/2+1);
+  ctx.restore();
+}
+
+/* v and F arrows: F always points against the relative motion; the coil feels the opposite force of the magnet */
+function halo(txt,x,y,align,col){
+  var ctx=sctx;
+  ctx.textAlign=align; ctx.lineJoin='round'; ctx.lineWidth=4; ctx.strokeStyle=C.surface; ctx.globalAlpha=.9; ctx.strokeText(txt,x,y);
+  ctx.globalAlpha=1; ctx.fillStyle=col; ctx.fillText(txt,x,y);
+}
+function vArrow(cx,v,y,label,col){
+  var ctx=sctx, s=geo.s, len, dir;
+  if(Math.abs(v)<=1.5)return;
+  len=Math.tanh(Math.abs(v)/35)*3.4*s; dir=v>0?1:-1;
+  arrow(cx,y,cx+dir*len,y,col,Math.max(3,.13*s)*.8);
+  halo(label,cx+dir*(len+8),y,dir>0?'left':'right',col);
+}
+function fArrow(cx,F,y,label,col){
+  var ctx=sctx, s=geo.s, len, dir;
+  if(!(S.closed&&alphaI()>.05&&Math.abs(F)>0.02))return;
+  len=Math.tanh(Math.abs(F)/1.3)*3.4*s; dir=F>0?1:-1;
+  arrow(cx,y,cx+dir*len,y,col,Math.max(3,.13*s)*1.15);
+  halo(label,cx+dir*(len+8),y,dir>0?'left':'right',col);
+}
+function drawArrows(){
+  var ctx=sctx, s=geo.s, fs=Math.max(12,Math.round(.52*s)), tab=S.tab, cm=geo.ax+S.x*s, cc=geo.ax+S.cx*s;
+  var col=S.phase>0?C.resist:(S.phase<0?C.hold:C.ink), kind=S.phase>0?'斥力':(S.phase<0?'引力':'磁力');
+  var tail=S.phase>0?'（抵抗）':(S.phase<0?'（挽留）':'');
+  ctx.save(); ctx.font='700 '+fs+'px "Noto Sans TC",system-ui,sans-serif'; ctx.textBaseline='middle';
+  vArrow(cm,S.vm,geo.ay-(MAG_H/2+1.1)*s,tab==='mag'?'運動 v':'磁鐵 v',C.ink);
+  if(tab!=='mag')vArrow(cc,S.vc,geo.ay-3.3*s,'線圈 v',C.wire);
+  if(tab!=='coil')fArrow(cm,S.F,geo.ay+(MAG_H/2+1.1)*s,(tab==='mag'?'':'磁鐵受')+kind+' F'+(tab==='mag'?tail:''),col);
+  if(tab!=='mag')fArrow(cc,-S.F,geo.ay+3.3*s,'線圈受'+kind+' F'+(tab==='coil'?tail:''),col);
+  ctx.restore();
+}
+function drawCoilHalo(){
+  var drg=isDrag('c');
+  if(!(drg||(!S.touched&&S.tab!=='mag')))return;
+  var ctx=sctx, s=geo.s, x=geo.ax+(S.cx-COIL_L/2-1.2)*s, y=geo.ay-(COIL_R+.6)*s, w=(COIL_L+2.4)*s, h=(2*COIL_R+1.2)*s;
+  ctx.save(); ctx.strokeStyle=C.phi; ctx.lineWidth=2; ctx.globalAlpha=drg?.9:.55; ctx.setLineDash([6,5]); rr(ctx,x,y,w,h,14); ctx.stroke(); ctx.restore();
+}
+
+function drawStage(){
+  var ctx=sctx;
+  ctx.clearRect(0,0,geo.W,geo.H);
+  ctx.save(); ctx.strokeStyle=C.line; ctx.lineWidth=1; ctx.setLineDash([2,6]); ctx.beginPath(); ctx.moveTo(0,geo.ay); ctx.lineTo(geo.W,geo.ay); ctx.stroke(); ctx.restore();
+  drawCircuit();
+  if(S.field)drawField();
+  drawInduced();
+  drawCoil('back'); drawCarriers('back');
+  drawMagnet();
+  drawCoil('front'); drawCarriers('front');
+  drawCoilHalo();
+  drawArrows();
+  if(geo.W>700){ctx.save(); ctx.fillStyle=C.muted; ctx.font='500 12px "Noto Sans TC",system-ui,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='bottom';
+  ctx.fillText('線圈 '+S.N+' 匝（圖中圈數為示意）',10,geo.H-8); ctx.restore();}
+}
+
+/* ---------- simulation step ---------- */
+var hist=[];
+function stepAuto(dt){
+  var a=S.auto, seg, done=true, i, m, cur, d, mv;
+  if(!a)return false;
+  if(a.hold>0){a.hold-=dt; return true;}
+  seg=a.segs[a.i];
+  for(i=0;i<seg.length;i++){
+    m=seg[i]; cur=(m.o==='m')?S.x:S.cx; d=m.to-cur; mv=m.sp*dt;
+    if(Math.abs(d)<=mv)cur=m.to; else{cur+=(d>0?1:-1)*mv; done=false;}
+    if(m.o==='m')S.x=cur; else S.cx=cur;
+  }
+  if(done){
+    a.i++; a.hold=a.pause||(a.loop?.6:0);
+    if(a.i>=a.segs.length){
+      if(a.loop)a.i=0;
+      else{S.auto=null; S.target=S.x; S.ctarget=S.cx; syncButtons();}
+    }
+  }
+  return true;
+}
+function step(dt){
+  var k, r, dmag;
+  S.t+=dt;
+  if(!stepAuto(dt)){
+    k=1-Math.exp(-dt*16);
+    if(S.tab!=='coil')S.x+=(S.target-S.x)*k;
+    if(S.tab!=='mag')S.cx+=(S.ctarget-S.cx)*k;
+  }
+  S.x=clampX(S.x); S.cx=clampC(S.cx);
+  k=1-Math.exp(-dt*45);
+  S.vm+=((S.x-S.xPrev)/dt-S.vm)*k; S.vc+=((S.cx-S.cxPrev)/dt-S.vc)*k;
+  S.xPrev=S.x; S.cxPrev=S.cx;
+  if(Math.abs(S.vm)<0.05)S.vm=0;
+  if(Math.abs(S.vc)<0.05)S.vc=0;
+  S.vSm=S.vm-S.vc;                       /* only the relative velocity matters */
+  r=S.x-S.cx;                            /* magnet position seen from the coil */
+  S.phi=phiAvg(r,S.p);
+  S.dphidx=dPhidx(r,S.p);
+  S.rate=S.dphidx*S.vSm;                 /* dPhi/dt per turn, mWb/s */
+  S.eps=-S.N*S.rate/1000;                /* Faraday: eps = -N dPhi/dt, volts */
+  S.I=S.closed?S.eps/RES:0;
+  S.F=S.I*S.N*S.dphidx*0.1;              /* force on the magnet, against the relative motion; the coil feels -F */
+  dmag=(S.phi>=0?1:-1)*S.rate;           /* d|Phi|/dt */
+  S.phase=Math.abs(dmag)>0.45?(dmag>0?1:-1):0;
+
+  if(alphaI()>0)S.carrier+=(S.I>0?1:-1)*(2.5+6*Math.tanh(Math.abs(S.I)/0.3))*dt;
+  S.needle+=(Math.tanh(S.I/0.35)*62-S.needle)*(1-Math.exp(-dt*12));
+
+  hist.push({t:S.t,phi:S.phi,eps:S.eps,ph:S.phase});
+  while(hist.length&&hist[0].t<S.t-8.5)hist.shift();
+}
+
+/* ---------- words ---------- */
+var MINUS='\u2212';
+function sg(v,d){var t=Math.abs(v).toFixed(d); return (v<0&&Number(t)!==0?MINUS:'+')+t;}
+var IDLE={
+  mag:'磁鐵不動，磁通量不變 → ε = 0 → 沒有電流。拖曳磁鐵，或按「插入」試試看。',
+  coil:'線圈不動，磁通量不變 → ε = 0 → 沒有電流。拖曳線圈，或按「套入」試試看。',
+  both:'兩個都沒動，磁通量不變 → ε = 0。拖曳其中一個，或按下方的示範。'
+};
+function approachWords(P){return S.tab==='mag'?P+' 極靠近線圈':(S.tab==='coil'?'線圈靠近磁鐵的 '+P+' 極':P+' 極和線圈互相靠近');}
+function leaveWords(P){return S.tab==='mag'?P+' 極離開線圈':(S.tab==='coil'?'線圈遠離磁鐵的 '+P+' 極':P+' 極和線圈互相遠離');}
+function updateText(){
+  var ph=S.phase, tab=S.tab, r=S.x-S.cx, left=r<0, pos=S.eps>0;
+  var moving=Math.abs(S.vSm)>3, anyMove=Math.abs(S.vm)>3||Math.abs(S.vc)>3;
+  var nearP=left?(S.p>0?'N':'S'):(S.p>0?'S':'N');
+  var leftP=pos?'S':'N', rightP=pos?'N':'S', faceP=left?leftP:rightP;
+  var who=tab==='mag'?'磁鐵':(tab==='coil'?'線圈':'它們');
+  var b=$('banner'), main, sub, why, when;
+  b.setAttribute('data-ph',ph>0?'rise':(ph<0?'fall':'idle'));
+  if(ph===0){
+    when='磁通量不變'; main='無感應'; sub='ε = 0';
+    if(!moving&&tab==='both'&&anyMove){when='沒有相對運動'; why='磁鐵和線圈以相同的速度一起移動，彼此沒有相對運動，磁通量不變 → ε = 0。只有「相對運動」才會感應。';}
+    else if(!moving) why=IDLE[tab];
+    else if(Math.abs(r)<2.5) why='磁鐵在線圈中央附近：Φ 剛好達到最大值，變化率是 0，所以這一刻 ε = 0。';
+    else why='磁鐵離線圈還遠，穿過線圈的磁通量幾乎沒有變化 → ε ≈ 0。再靠近一點看看。';
+  } else if(!S.closed){
+    when='開路時'; main='無阻力'; sub='I = 0';
+    why='開關斷開：Φ 仍在變化，所以仍有感應電動勢 ε，但電路不通，沒有電流 → 線圈不會變成磁鐵 → 沒有阻力。把開關接通就會「插入時抵抗，離開時吸引」。';
+  } else if(ph>0){
+    when='插入時'; main='抵抗'; sub='同極相斥';
+    why=approachWords(nearP)+'，磁通量增加 → 線圈靠近磁鐵的一端感應出 '+faceP+' 極（和磁鐵同名）→ 同極相斥，阻止'+who+'靠近。';
+  } else {
+    when='離開時'; main='吸引'; sub='異極相吸';
+    why=leaveWords(nearP)+'，磁通量減少 → 線圈靠近磁鐵的一端感應出 '+faceP+' 極（和磁鐵不同名）→ 異極相吸，想把'+who+'留住。';
+  }
+  $('bWhen').textContent=when; $('bMain').textContent=main; $('bSub').textContent=sub; $('why').textContent=why;
+
+  $('s1').innerHTML=(S.p>0?'向右 →':'← 向左')+'<small>　磁鐵 N 極朝'+(S.p>0?'右':'左')+'</small>';
+  $('s2').textContent=ph>0?'增加 ↑':(ph<0?'減少 ↓':'不變');
+  if(ph===0){$('s3').textContent='—'; $('s4').textContent='—';}
+  else if(!S.closed){$('s3').textContent='沒有（開路，I = 0）'; $('s4').textContent='沒有電流';}
+  else{
+    $('s3').innerHTML=(pos?'向右 →':'← 向左')+'<small>　'+(ph>0?'與原磁場相反':'與原磁場相同')+'；左端 '+leftP+'、右端 '+rightP+'</small>';
+    $('s4').innerHTML='從左側看：'+(pos?'順時針':'逆時針');
+  }
+
+  $('cV').textContent=sg(tab==='coil'?S.vc:S.vSm,1)+' cm/s';
+  $('cRate').textContent=sg(S.rate,1)+' mWb/s';
+  $('cN').textContent=S.N;
+  $('cEps').textContent=sg(S.eps,2)+' V';
+  $('cI').textContent=S.closed?sg(S.I,3)+' A':'0.000 A（開路）';
+}
+
+/* ---------- graphs ---------- */
+var ch={phi:{cv:$('gPhi'),W:0,H:0},eps:{cv:$('gEps'),W:0,H:0}};
+var PHI_RANGE=2.5, SPAN=8;
+(function(){var m=0,x;for(x=-20;x<=20;x+=.25)m=Math.max(m,Math.abs(phiAvg(x,1)));PHI_RANGE=Math.ceil(m*1.15*2)/2;})();
+function fitCharts(){var k,d;for(k in ch){d=fit(ch[k].cv);ch[k].W=d.W;ch[k].H=d.H;}}
+function niceMax(v){var e=Math.pow(10,Math.floor(Math.log10(v))),f=v/e;return (f<=1?1:f<=2?2:f<=5?5:10)*e;}
+function fmtAx(v){var a=Math.abs(v);return (v<0?MINUS:(v>0?'+':''))+(a>=10?a.toFixed(0):(a>=1||a===0?a.toFixed(a%1?1:0):a.toFixed(2)));}
+function drawChart(c,key,color,title,unit,range,valText){
+  var ctx=c.cv.getContext('2d'), W=c.W, H=c.H, padL=46, padR=14, padT=30, padB=12;
+  var pw=W-padL-padR, ph=H-padT-padB, x0=padL, y0=padT, now=S.t, i, h, run=null;
+  function X(t){return x0+(t-(now-SPAN))/SPAN*pw;}
+  function Y(v){return y0+ph/2-v/range*ph/2;}
+  function band(r,t1){
+    var xa=Math.max(x0,X(r.t0)), xb=Math.min(x0+pw,X(t1));
+    if(xb-xa<1)return;
+    ctx.globalAlpha=.12; ctx.fillStyle=r.ph>0?C.resist:C.hold; ctx.fillRect(xa,y0,xb-xa,ph); ctx.globalAlpha=1;
+    if(xb-xa>30){ctx.fillStyle=r.ph>0?C.resist:C.hold; ctx.font='700 11px "Noto Sans TC",system-ui,sans-serif'; ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText(r.ph>0?'抵抗':'吸引',(xa+xb)/2,y0+3);}
+  }
+  ctx.clearRect(0,0,W,H);
+  for(i=0;i<hist.length;i++){
+    h=hist[i];
+    if(run&&h.ph!==run.ph){band(run,h.t);run=null;}
+    if(!run&&h.ph!==0)run={ph:h.ph,t0:h.t};
+  }
+  if(run)band(run,S.t);
+  ctx.strokeStyle=C.line; ctx.lineWidth=1;
+  [range,0,-range].forEach(function(v){ctx.beginPath();ctx.moveTo(x0,Y(v));ctx.lineTo(x0+pw,Y(v));ctx.stroke();});
+  ctx.strokeStyle=C.muted; ctx.globalAlpha=.7; ctx.beginPath(); ctx.moveTo(x0,Y(0)); ctx.lineTo(x0+pw,Y(0)); ctx.stroke(); ctx.globalAlpha=1;
+  ctx.fillStyle=C.muted; ctx.font='400 11px "IBM Plex Mono",ui-monospace,monospace'; ctx.textAlign='right'; ctx.textBaseline='middle';
+  ctx.fillText(fmtAx(range),x0-6,Y(range)); ctx.fillText('0',x0-6,Y(0)); ctx.fillText(fmtAx(-range),x0-6,Y(-range));
+  ctx.textAlign='center'; ctx.textBaseline='top'; ctx.fillText('時間 →',x0+pw-22,H-12);
+  if(hist.length>1){
+    ctx.save(); ctx.beginPath(); ctx.rect(x0,y0-1,pw,ph+2); ctx.clip();
+    ctx.beginPath(); ctx.moveTo(X(hist[0].t),Y(hist[0][key]));
+    for(i=1;i<hist.length;i++)ctx.lineTo(X(hist[i].t),Y(hist[i][key]));
+    ctx.strokeStyle=color; ctx.lineWidth=2.4; ctx.lineJoin='round'; ctx.stroke();
+    ctx.lineTo(X(hist[hist.length-1].t),Y(0)); ctx.lineTo(X(hist[0].t),Y(0)); ctx.closePath();
+    ctx.globalAlpha=.16; ctx.fillStyle=color; ctx.fill(); ctx.globalAlpha=1;
+    ctx.restore();
+    ctx.fillStyle=color; ctx.beginPath(); ctx.arc(X(S.t),Y(Math.max(-range,Math.min(range,hist[hist.length-1][key]))),4.5,0,6.2832); ctx.fill();
+  }
+  ctx.fillStyle=C.ink; ctx.font='700 '+Math.max(12,Math.min(15,W*.032))+'px "Noto Sans TC",system-ui,sans-serif'; ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(title,12,15);
+  ctx.fillStyle=color; ctx.font='500 '+Math.max(12,Math.min(15,W*.032))+'px "IBM Plex Mono",ui-monospace,monospace'; ctx.textAlign='right';
+  ctx.fillText(valText+' '+unit,W-12,15);
+}
+function drawCharts(){
+  var m=0,i;
+  for(i=0;i<hist.length;i++)m=Math.max(m,Math.abs(hist[i].eps));
+  var er=niceMax(Math.max(1,m*1.1));
+  drawChart(ch.phi,'phi',C.phi,'磁通量 Φ（單匝，向右為正）','mWb',PHI_RANGE,sg(S.phi,2));
+  drawChart(ch.eps,'eps',C.eps,'感應電動勢 ε','V',er,sg(S.eps,2));
+}
+
+/* ---------- controls ---------- */
+var hint=$('hint'), TABS=['mag','coil','both'], TABID={mag:'tabMag',coil:'tabCoil',both:'tabBoth'}, BTNID=['bIn','bOut','bLoop'];
+var BTN={
+  mag:[['▶ 插入','把磁鐵插入線圈'],['◀ 拔出','把磁鐵拔出線圈'],['⇄ 往返','磁鐵穿過線圈來回往返']],
+  coil:[['◀ 套入','把線圈套向磁鐵'],['▶ 退出','讓線圈離開磁鐵'],['⇄ 往返','線圈穿過磁鐵來回往返']],
+  both:[['相向靠近','磁鐵和線圈相向靠近，再分開'],['同向同速','兩者往同一方向、用同樣的速度移動'],['同向不同速','兩者往同一方向、速度不同']]
+};
+var HINT={mag:'← 左右拖曳磁鐵 →',coil:'← 左右拖曳線圈 →',both:'磁鐵、線圈都能拖（手機可兩指一起拖）'};
+var TIP2={
+  mag:'磁力永遠阻礙磁鐵的運動，手多出的力變成電能。越快、匝數越多，ε 越大。',
+  coil:'磁力永遠阻礙線圈的運動，手多出的力變成電能。越快、匝數越多，ε 越大。',
+  both:'磁鐵和線圈受的力大小相同、方向相反。越快、匝數越多，ε 越大。'
+};
+var VLAB={mag:'磁鐵速度 v',coil:'線圈速度 v',both:'相對速度 v磁−v線'};
+var ALAB={
+  mag:'一根條形磁鐵與線圈的側視圖。左右拖曳磁鐵，或用左右方向鍵移動。',
+  coil:'一根固定的條形磁鐵與可移動的線圈。左右拖曳線圈，或用左右方向鍵移動。',
+  both:'磁鐵與線圈都能移動。方向鍵移動磁鐵，Shift 加方向鍵移動線圈。'
+};
+function syncButtons(){
+  var i;
+  for(i=0;i<3;i++)$(BTNID[i]).setAttribute('data-on',(S.auto&&S.auto.id==='abc'.charAt(i))?'1':'0');
+}
+function markTouched(){S.touched=true; hint.classList.add('gone');}
+function mv(o,to,sp){return {o:o,to:to,sp:sp};}
+function runAuto(id,segs,loop,pause){S.auto={id:id,segs:segs,i:0,loop:!!loop,hold:0,pause:pause||0}; S.drag={}; markTouched(); syncButtons();}
+function place(xm,xc){
+  S.x=S.target=S.xPrev=clampX(xm); S.cx=S.ctarget=S.cxPrev=clampC(xc);
+  S.vm=S.vc=S.vSm=0; S.auto=null; hist.length=0;
+}
+function onBtn(k){
+  var sp=S.speed, t=S.tab, A, B, c;
+  if(S.auto&&S.auto.id===k&&S.auto.loop){S.auto=null; S.target=S.x; S.ctarget=S.cx; syncButtons(); return;}
+  if(t==='mag'){
+    if(k==='a')runAuto(k,[[mv('m',0,sp)]]);
+    else if(k==='b')runAuto(k,[[mv('m',geo.xmin,sp)]]);
+    else{A=S.x<0?geo.xmax:geo.xmin; B=S.x<0?geo.xmin:geo.xmax; runAuto(k,[[mv('m',A,sp)],[mv('m',B,sp)]],true);}
+  } else if(t==='coil'){
+    if(k==='a')runAuto(k,[[mv('c',0,sp)]]);
+    else if(k==='b')runAuto(k,[[mv('c',S.cx<0?geo.cmin:geo.cmax,sp)]]);
+    else{A=S.cx<0?geo.cmax:geo.cmin; B=S.cx<0?geo.cmin:geo.cmax; runAuto(k,[[mv('c',A,sp)],[mv('c',B,sp)]],true);}
+  } else if(k==='a'){
+    c=Math.min(9,geo.cmax); place(-c,c);
+    runAuto(k,[[mv('m',0,sp),mv('c',0,sp)],[mv('m',-c,sp),mv('c',c,sp)]],false,.5);
+  } else if(k==='b'){
+    place(-6,-1); runAuto(k,[[mv('m',0,sp),mv('c',5,sp)]]);
+  } else {
+    place(-9,-1); runAuto(k,[[mv('m',5,sp),mv('c',6,sp*.5)]]);
+  }
+}
+function setTab(name){
+  var i, el, c;
+  if(TABS.indexOf(name)<0)name='mag';
+  S.tab=name; S.drag={}; S.touched=false;
+  if(name==='mag')place(geo.xmin,0);
+  else if(name==='coil')place(0,geo.cmax);
+  else{c=Math.min(9,geo.cmax); place(-c,c);}
+  TABS.forEach(function(t){el=$(TABID[t]); el.setAttribute('aria-selected',t===name?'true':'false'); el.tabIndex=(t===name)?0:-1;});
+  for(i=0;i<3;i++){el=$(BTNID[i]); el.textContent=BTN[name][i][0]; el.setAttribute('aria-label',BTN[name][i][1]);}
+  hint.textContent=HINT[name]; hint.classList.remove('gone');
+  $('cVlab').textContent=VLAB[name]; $('tip2').textContent=TIP2[name];
+  stage.setAttribute('aria-label',ALAB[name]);
+  stage.classList.remove('grabbing');
+  syncButtons();
+}
+function hashTab(){var h=''; try{h=(location.hash||'').replace('#','');}catch(_){} return TABS.indexOf(h)>=0?h:null;}
+function goTab(name){
+  setTab(name);
+  try{if(location.hash!=='#'+name)location.hash=name;}catch(_){}
+}
+TABS.forEach(function(t){
+  $(TABID[t]).addEventListener('click',function(){if(t!==S.tab)goTab(t);});
+  $(TABID[t]).addEventListener('keydown',function(e){
+    var i=TABS.indexOf(S.tab), n=null;
+    if(e.key==='ArrowRight')n=TABS[(i+1)%3]; else if(e.key==='ArrowLeft')n=TABS[(i+2)%3];
+    if(n){e.preventDefault(); goTab(n); $(TABID[n]).focus();}
+  });
+});
+window.addEventListener('hashchange',function(){var h=hashTab(); if(h&&h!==S.tab)setTab(h);});
+
+$('bIn').addEventListener('click',function(){onBtn('a');});
+$('bOut').addEventListener('click',function(){onBtn('b');});
+$('bLoop').addEventListener('click',function(){onBtn('c');});
+$('bFlip').addEventListener('click',function(){S.p=-S.p; markTouched();});
+$('rSpeed').addEventListener('input',function(e){S.speed=+e.target.value; $('oSpeed').textContent=S.speed+' cm/s';});
+$('rN').addEventListener('input',function(e){S.N=+e.target.value; $('oN').textContent=S.N+' 匝';});
+$('cSwitch').addEventListener('change',function(e){S.closed=e.target.checked;});
+$('cField').addEventListener('change',function(e){S.field=e.target.checked;});
+
+function pt(e){var r=stage.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+stage.addEventListener('pointerdown',function(e){
+  var q=pt(e), sw=geo.sw, wx=(q.x-geo.ax)/geo.s, wy=-(q.y-geo.ay)/geo.s, o=null, canM=S.tab!=='coil', canC=S.tab!=='mag';
+  if(sw&&q.x>=sw.x&&q.x<=sw.x+sw.w&&q.y>=sw.y&&q.y<=sw.y+sw.h){
+    S.closed=!S.closed; $('cSwitch').checked=S.closed; e.preventDefault(); return;
+  }
+  if(canM&&Math.abs(wx-S.x)<=MAG_L/2+.4&&Math.abs(wy)<=MAG_H/2+1.2)o='m';
+  else if(canC&&Math.abs(wx-S.cx)<=COIL_L/2+1.6&&Math.abs(wy)<=COIL_R+1.5)o='c';
+  else if(canM&&Math.abs(wx-S.x)<=MAG_L/2+2.5&&Math.abs(wy)<=4.5)o='m';
+  if(!o)return;
+  S.auto=null; S.target=S.x; S.ctarget=S.cx;
+  S.drag[e.pointerId]={o:o,dx:(o==='m'?S.x:S.cx)-wx};
+  markTouched(); syncButtons();
+  try{stage.setPointerCapture(e.pointerId);}catch(_){}
+  stage.classList.add('grabbing'); e.preventDefault();
+});
+stage.addEventListener('pointermove',function(e){
+  var d=S.drag[e.pointerId], wx;
+  if(!d)return;
+  wx=(pt(e).x-geo.ax)/geo.s+d.dx;
+  if(d.o==='m')S.target=clampX(wx); else S.ctarget=clampC(wx);
+});
+function endDrag(e){
+  delete S.drag[e.pointerId];
+  if(!isDrag('m')&&!isDrag('c'))stage.classList.remove('grabbing');
+}
+stage.addEventListener('pointerup',endDrag);
+stage.addEventListener('pointercancel',endDrag);
+stage.addEventListener('keydown',function(e){
+  var k=e.key, dx, o;
+  if(k==='ArrowLeft'||k==='ArrowRight'){
+    dx=(k==='ArrowRight'?1.5:-1.5); o=(S.tab==='coil'||(S.tab==='both'&&e.shiftKey))?'c':'m';
+    S.auto=null; S.target=S.x; S.ctarget=S.cx; markTouched(); syncButtons();
+    if(o==='m')S.target=clampX(S.target+dx); else S.ctarget=clampC(S.ctarget+dx);
+    e.preventDefault();
+  }
+});
+
+/* ---------- start ---------- */
+function onTheme(){readColors();}
+try{window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',onTheme);}catch(_){}
+new MutationObserver(onTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+function relayout(){layout();fitCharts();}
+if(window.ResizeObserver){
+  var ro=new ResizeObserver(relayout);
+  ro.observe(stage); ro.observe(ch.phi.cv); ro.observe(ch.eps.cv);
+} else window.addEventListener('resize',relayout);
+
+readColors(); layout(); fitCharts();
+setTab(hashTab()||'mag');
+var last=0, lastText=-1e9;
+function frame(ts){
+  var dt=Math.min(.05,Math.max(.001,(ts-last)/1000)); last=ts;
+  step(dt); drawStage(); drawCharts();
+  if(ts-lastText>90){updateText();lastText=ts;}
+  requestAnimationFrame(frame);
+}
+syncButtons();
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
